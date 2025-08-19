@@ -7,7 +7,3 @@ This repository provides shell scripts and utilities for handling real IP addres
 - **Extract Real IP**: Automatically fetch the original client IP from Cloudflare headers.
 - **Simple Shell Scripts**: Lightweight and easily customizable scripts for quick integration.
 - **Cloudflare Compatibility**: Designed to work with standard Cloudflare proxy setups.
-
-## Technologies Used
-- **Shell Scripting**
-
