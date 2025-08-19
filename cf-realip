@@ -1,0 +1,107 @@
+#!/bin/env sh
+
+# -----------------------
+# CLI Flags
+# -----------------------
+VERBOSE=false
+MODE=""
+
+V() { [ "$VERBOSE" = true ] && echo "$@"; }
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -v|--verbose) VERBOSE=true; shift ;;
+        -n|--nginx) MODE="nginx"; shift ;;
+        -a|--angie) MODE="angie"; shift;;
+        *) echo "Unknown option: $1"; exit 1 ;;
+    esac
+done
+
+# -----------------------
+# Check for root
+# -----------------------
+if [ "$(id -u)" -ne 0 ]; then
+    echo "This script must be run as root"
+    exit 1
+fi
+
+# -----------------------
+# Check MODE
+# -----------------------
+case "$MODE" in
+    "nginx"|"angie") 
+        ;; # Do nothing, continue
+    *) 
+        echo "Unknown mode. Exiting..." 
+        exit 1 # Actually exit with an error code
+        ;;
+esac
+
+# -----------------------
+# Functions
+# -----------------------
+CURL() {
+    case $1 in
+        4|6) curl -s https://www.cloudflare.com/ips-v$1 ;;
+        *) exit 1 ;;
+    esac
+}
+
+
+# -----------------------
+# Files & Dirs
+# -----------------------
+UPDATE=false
+DIR="$HOME/.cache"
+FILE="$DIR/cf_ips.md5"
+
+mkdir -p "$DIR"
+[ -f "$FILE" ] || touch "$FILE"
+
+# -----------------------
+# Compute hashes
+# -----------------------
+IPV4_HASH=$(CURL 4 | md5sum | awk '{print $1}')
+IPV6_HASH=$(CURL 6 | md5sum | awk '{print $1}')
+NEW_HASHES=$(printf "ipv4=%s\nipv6=%s\n" "$IPV4_HASH" "$IPV6_HASH")
+
+V "Current hashes:"
+V "$NEW_HASHES"
+
+CUR_HASHES=$(cat "$FILE")
+if [ "$NEW_HASHES" != "$CUR_HASHES" ]; then
+    V "Cloudflare IP ranges UPDATED"
+    echo "$NEW_HASHES" > "$FILE"
+    UPDATE=true
+else
+    V "No change."
+fi
+
+# -----------------------
+# Write Nginx config
+# -----------------------
+# Use tmp so that if the cache is cleared we don't restart the service
+TMP="/tmp/cloudflare_realip.conf"
+CONF="/etc/$MODE/cloudflare_realip.conf"
+
+WRITE() {
+    CURL "$1" | while IFS= read -r line; do
+        [ -n "$line" ] && echo "set_real_ip_from $line;"
+    done >> "$TMP"
+}
+
+if [ "$UPDATE" = true ] || [ ! -s "$CONF" ]; then
+	touch $TMP
+	WRITE 4
+	WRITE 6
+
+	echo "real_ip_header CF-Connecting-IP;" >> "$TMP"
+
+    if [ "$(cat $TMP)" != "$(cat $CONF)" ]; then 
+        mv $TMP $CONF
+        systemctl restart $MODE
+    fi
+fi
+
+[ "$VERBOSE" = true ] && cat "$CONF"
+[ "$UPDATE" = true ] && V "Lists refreshed."
