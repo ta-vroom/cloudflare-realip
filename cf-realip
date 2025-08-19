@@ -95,7 +95,8 @@ if [ "$UPDATE" = true ] || [ ! -s "$CONF" ]; then
 	WRITE 4
 	WRITE 6
 
-	echo "real_ip_header CF-Connecting-IP;" >> "$TMP"
+	# Crowdsec seems to expect either "X-Real-IP" or "X-Forwarded-For"
+	echo "real_ip_header X-Real-IP;" >> "$TMP"
 
     if [ "$(cat $TMP)" != "$(cat $CONF)" ]; then 
         mv $TMP $CONF
